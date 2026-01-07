@@ -29,7 +29,6 @@ const uploadFile = async (req, res) => {
     const fileType = file.mimetype;
     const isPDF = fileType === 'application/pdf';
     const isImage = fileType.startsWith('image/');
-    const pdfUrl = `${process.env.BACKEND_URL}/uploads/pdfs/${req.file.filename}`;
 
 
     console.log(`Processing file: ${file.originalname}, Type: ${fileType}`);
@@ -59,7 +58,7 @@ const uploadFile = async (req, res) => {
       cloudinaryPublicId = cloudinaryResult.public_id;
     } else {
       // PDFs / DOCX → already saved by multer
-      fileUrl = `${process.env.BACKEND_URL}/uploads/pdfs/${file.filename}`;
+      fileUrl =`/uploads/pdfs/${file.filename}`;
       cloudinaryPublicId = null;
     }
 

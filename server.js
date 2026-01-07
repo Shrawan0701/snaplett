@@ -39,12 +39,8 @@ const limiter = rateLimit({
 app.use('/api/', limiter);
 
 app.use(
-  '/uploads/pdfs',
-  express.static(path.join(__dirname, 'uploads/pdfs'), {
-    setHeaders: (res) => {
-      res.setHeader('Content-Type', 'application/pdf');
-    }
-  })
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'))
 );
 
 // Routes
@@ -54,10 +50,6 @@ app.use('/api/search', require('./routes/search'));
 app.use('/api/payment', require('./routes/payment'));
 
 
-app.use(
-  '/uploads',
-  express.static(path.join(__dirname, 'uploads'))
-);
 
 
 // Health check

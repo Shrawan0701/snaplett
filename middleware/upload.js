@@ -9,18 +9,20 @@ if (!fs.existsSync(pdfDir)) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
-      cb(null, pdfDir);
-    } else {
-      cb(null, path.join(__dirname, '..', 'uploads'));
-    }
-  },
+ destination: (req, file, cb) => {
+  if (file.mimetype === 'application/pdf') {
+    cb(null, pdfDir); // ✅ correct
+  } else {
+    cb(null, path.join(__dirname, '..', 'uploads'));
+  }
+},
+
   filename: (req, file, cb) => {
     const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, unique + path.extname(file.originalname));
   }
 });
+
 
 const fileFilter = (req, file, cb) => {
   const allowed = [
