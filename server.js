@@ -38,10 +38,7 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 
-app.use(
-  '/uploads',
-  express.static(path.join(__dirname, 'uploads'))
-);
+
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

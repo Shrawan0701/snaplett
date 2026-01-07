@@ -57,12 +57,12 @@ const uploadFile = async (req, res) => {
 
       fileUrl = cloudinaryResult.secure_url;
       cloudinaryPublicId = cloudinaryResult.public_id;
-    } else {
+   } else {
   const fileBuffer = fs.readFileSync(file.path);
 
   const supabasePath = `${userId}/${Date.now()}-${file.originalname}`;
 
-  const { data, error } = await supabase.storage
+  const { error } = await supabase.storage
     .from('files')
     .upload(supabasePath, fileBuffer, {
       contentType: file.mimetype,
@@ -76,10 +76,8 @@ const uploadFile = async (req, res) => {
     .getPublicUrl(supabasePath);
 
   fileUrl = publicUrl.publicUrl;
-
-  // optional cleanup
-  fs.unlinkSync(file.path);
 }
+
 
 
     console.log('File stored successfully');
@@ -114,6 +112,12 @@ const uploadFile = async (req, res) => {
     }
 
     console.log(`Extracted text length: ${extractedText.length} characters`);
+
+    // cleanup temp file AFTER extraction
+if (fs.existsSync(file.path)) {
+  fs.unlinkSync(file.path);
+}
+
 
     /* ---------- Embedding ---------- */
     const embedding = await generateEmbedding(extractedText);
