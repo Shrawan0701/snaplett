@@ -12,6 +12,10 @@ const {
   deleteFile
 } = require('../controllers/fileController');
 
+// Serve PDFs statically
+
+
+
 // Upload file
 router.post(
   '/upload',

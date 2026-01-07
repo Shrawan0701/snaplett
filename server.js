@@ -38,6 +38,15 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 
+app.use(
+  '/uploads/pdfs',
+  express.static(path.join(__dirname, 'uploads/pdfs'), {
+    setHeaders: (res) => {
+      res.setHeader('Content-Type', 'application/pdf');
+    }
+  })
+);
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/files', require('./routes/files'));
@@ -63,6 +72,7 @@ app.use((err, req, res, next) => {
     error: err.message || 'Internal server error'
   });
 });
+
 
 // 404 handler
 app.use((req, res) => {
