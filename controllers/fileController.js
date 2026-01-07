@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const supabase = require('../config/supabase');
 const fs = require('fs');
 const path = require('path');
 const { detectFolder } = require('../services/folderDetector');
@@ -57,10 +58,29 @@ const uploadFile = async (req, res) => {
       fileUrl = cloudinaryResult.secure_url;
       cloudinaryPublicId = cloudinaryResult.public_id;
     } else {
-      // PDFs / DOCX → already saved by multer
-      fileUrl =`/uploads/pdfs/${file.filename}`;
-      cloudinaryPublicId = null;
-    }
+  const fileBuffer = fs.readFileSync(file.path);
+
+  const supabasePath = `${userId}/${Date.now()}-${file.originalname}`;
+
+  const { data, error } = await supabase.storage
+    .from('files')
+    .upload(supabasePath, fileBuffer, {
+      contentType: file.mimetype,
+      upsert: false
+    });
+
+  if (error) throw error;
+
+  const { data: publicUrl } = supabase.storage
+    .from('files')
+    .getPublicUrl(supabasePath);
+
+  fileUrl = publicUrl.publicUrl;
+
+  // optional cleanup
+  fs.unlinkSync(file.path);
+}
+
 
     console.log('File stored successfully');
 

@@ -12,4 +12,6 @@ logs
 Thumbs.db
 
 node_modules/
+temp/
 uploads/
+
