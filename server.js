@@ -36,12 +36,15 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(
   session({
+    name: 'snaplet.sid',
     secret: process.env.JWT_SECRET,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
     cookie: {
       secure: true,
-      sameSite: 'none'
+      sameSite: 'none',
+      httpOnly: true,
+      maxAge: 10 * 60 * 1000 // 10 min
     }
   })
 );
