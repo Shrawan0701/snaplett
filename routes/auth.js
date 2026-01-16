@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 const { body } = require('express-validator');
+const crypto = require('crypto');
 
 const {
   signup,
@@ -33,13 +34,17 @@ router.post(
 );
 
 // Google OAuth routes
-router.get(
-  '/google',
+router.get('/google', (req, res, next) => {
+  const state = crypto.randomBytes(16).toString('hex');
+
+  req.session.oauthState = state;
+
   passport.authenticate('google', {
     scope: ['profile', 'email'],
+    state,
     session: false
-  })
-);
+  })(req, res, next);
+});
 
 router.get(
   '/google/callback',

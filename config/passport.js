@@ -37,14 +37,14 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL
+      callbackURL: process.env.GOOGLE_CALLBACK_URL,
+      passReqToCallback: true
     },
-    async (accessToken, refreshToken, profile, done) => {
+    async (req, accessToken, refreshToken, profile, done) => {
       try {
         const email = profile.emails[0].value;
         const googleId = profile.id;
 
-        // Check if user exists with Google ID
         let result = await pool.query(
           'SELECT * FROM users WHERE google_id = $1',
           [googleId]
@@ -54,34 +54,31 @@ passport.use(
           return done(null, result.rows[0]);
         }
 
-        // Check if email exists
         result = await pool.query(
           'SELECT * FROM users WHERE email = $1',
           [email]
         );
 
         if (result.rows.length > 0) {
-          // Link Google account
           await pool.query(
             'UPDATE users SET google_id = $1 WHERE email = $2',
             [googleId, email]
           );
-
           return done(null, result.rows[0]);
         }
 
-        // Create new user
         result = await pool.query(
           'INSERT INTO users (email, google_id, country) VALUES ($1, $2, $3) RETURNING *',
           [email, googleId, 'IN']
         );
 
         return done(null, result.rows[0]);
-      } catch (error) {
-        return done(error, false);
+      } catch (err) {
+        return done(err, false);
       }
     }
   )
 );
+
 
 module.exports = passport;

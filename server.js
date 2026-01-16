@@ -5,6 +5,9 @@ const rateLimit = require('express-rate-limit');
 const passport = require('./config/passport');
 const path = require('path');
 require('dotenv').config();
+const session = require('express-session');
+
+
 
 const app = express();
 
@@ -16,9 +19,11 @@ app.use(helmet());
 app.use(
   cors({
     origin: [
-      'https://snaplet-henna.vercel.app',
-      'http://localhost:3000'
-    ],
+  'https://snaplet.work',
+  'https://snaplet-henna.vercel.app',
+  'http://localhost:3000'
+],
+
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -28,22 +33,25 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use(
+  session({
+    secret: process.env.JWT_SECRET,
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+      secure: true,
+      sameSite: 'none'
+    }
+  })
+);
+
+
 app.use(passport.initialize());
 
-app.get('/api/auth/google/debug', (req, res) => {
-  const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    redirect_uri: process.env.GOOGLE_CALLBACK_URL,
-    response_type: 'code',
-    scope: 'openid email profile',
-    prompt: 'consent',
-    access_type: 'offline'
-  });
 
-  res.redirect(
-    `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-  );
-});
+
+
 
 
 // Rate limiting
