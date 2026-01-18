@@ -20,6 +20,7 @@ app.use(
   cors({
     origin: [
   'https://snaplet.work',
+  'https://www.snaplet.work',
   'https://snaplet-henna.vercel.app',
   'http://localhost:3000'
 ],
