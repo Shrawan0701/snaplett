@@ -14,6 +14,15 @@ const {
 
 const { authenticate } = require('../middleware/auth');
 
+router.options('/forgot-password', (req, res) => {
+  res.sendStatus(200);
+});
+
+router.options('/reset-password', (req, res) => {
+  res.sendStatus(200);
+});
+
+
 // Email/Password signup
 router.post(
   '/signup',

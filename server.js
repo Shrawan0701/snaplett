@@ -31,6 +31,10 @@ app.use(
   })
 );
 
+// 👇 ADD THIS LINE (CRITICAL)
+app.options('*', cors());
+
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -64,7 +68,13 @@ const limiter = rateLimit({
   max: 100 // limit each IP to 100 requests per windowMs
 });
 
-app.use('/api/', limiter);
+app.use('/api/', (req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  limiter(req, res, next);
+});
+
 
 
 
