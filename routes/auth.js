@@ -3,6 +3,7 @@ const router = express.Router();
 const passport = require('passport');
 const { body } = require('express-validator');
 const crypto = require('crypto');
+const authController = require('../controllers/authController');
 
 const {
   signup,
@@ -33,6 +34,10 @@ router.post(
   login
 );
 
+
+router.post('/forgot-password', authController.forgotPassword);
+
+router.post('/reset-password', authController.resetPassword);
 // Google OAuth routes
 router.get('/google', (req, res, next) => {
   const state = crypto.randomBytes(16).toString('hex');

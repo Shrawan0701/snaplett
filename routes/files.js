@@ -9,7 +9,12 @@ const {
   getUserFiles,
   getUserFolders,
   updateFileFolder,
-  deleteFile
+  deleteFile,
+  shareFile,
+  getSharedFile,
+  setFilePassword,
+  verifyFilePassword,
+  createFolder,
 } = require('../controllers/fileController');
 
 // Serve PDFs statically
@@ -36,5 +41,25 @@ router.put('/:id/folder', authenticate, updateFileFolder);
 
 // Delete file
 router.delete('/:id', authenticate, deleteFile);
+
+router.post('/share/:fileId', authenticate, shareFile);
+
+router.get('/share/:token', getSharedFile);
+
+router.post(
+  '/password/:fileId',
+  authenticate,
+  setFilePassword
+);
+
+router.post(
+  '/password/verify/:fileId',
+  verifyFilePassword
+);
+
+router.post('/folders', authenticate, createFolder);
+
+
+
 
 module.exports = router;

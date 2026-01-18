@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const { validationResult } = require('express-validator');
+const { sendOTPEmail } = require('../services/emailService');
+const crypto = require('crypto');
 
 const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -143,9 +145,72 @@ const getCurrentUser = async (req, res) => {
   }
 };
 
+
+// SEND OTP
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+
+  const userRes = await pool.query(
+    'SELECT id FROM users WHERE email=$1',
+    [email]
+  );
+
+  if (userRes.rowCount === 0) {
+    return res.json({ message: 'If email exists, OTP sent' });
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+  const expires = new Date(Date.now() + 10 * 60 * 1000);
+
+  await pool.query(
+    `UPDATE users
+     SET reset_otp_hash=$1, reset_otp_expires=$2
+     WHERE email=$3`,
+    [otpHash, expires, email]
+  );
+
+  await sendOTPEmail(email, otp);
+  res.json({ message: 'OTP sent' });
+};
+
+const resetPassword = async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+
+  const userRes = await pool.query(
+    `SELECT id FROM users
+     WHERE email=$1
+     AND reset_otp_hash=$2
+     AND reset_otp_expires > NOW()`,
+    [email, otpHash]
+  );
+
+  if (userRes.rowCount === 0) {
+    return res.status(400).json({ error: 'Invalid or expired OTP' });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+
+  await pool.query(
+    `UPDATE users
+     SET password_hash=$1,
+         reset_otp_hash=NULL,
+         reset_otp_expires=NULL
+     WHERE email=$2`,
+    [passwordHash, email]
+  );
+
+  res.json({ message: 'Password reset successful' });
+};
+
+
 module.exports = {
   signup,
   login,
   googleAuthCallback,
-  getCurrentUser
+  getCurrentUser,
+  forgotPassword,
+  resetPassword
 };

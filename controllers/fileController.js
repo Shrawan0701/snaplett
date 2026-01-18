@@ -3,6 +3,9 @@ const supabase = require('../config/supabase');
 const fs = require('fs');
 const path = require('path');
 const { detectFolder } = require('../services/folderDetector');
+const crypto = require('crypto');
+const bcrypt = require('bcrypt');
+
 
 
 const cloudinary = require('../config/cloudinary');
@@ -15,6 +18,7 @@ const { getDownloadUrl } = require('../utils/cloudinaryDownload');
 
 
 const { Readable } = require('stream');
+const { create } = require('domain');
 
 /* ============================
    UPLOAD FILE
@@ -327,6 +331,171 @@ const updateFileFolder = async (req, res) => {
   }
 };
 
+const shareFile = async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const userId = req.user.id;
+
+    const token = crypto.randomBytes(16).toString('hex');
+
+    const result = await pool.query(
+      `
+      UPDATE files
+      SET is_shared = true,
+          share_token = $1
+      WHERE id = $2 AND user_id = $3
+      RETURNING share_token
+      `,
+      [token, fileId, userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    res.json({
+      shareUrl: `${process.env.FRONTEND_URL}/share/${token}`
+    });
+  } catch (err) {
+    console.error('Share error:', err);
+    res.status(500).json({ error: 'Failed to generate share link' });
+  }
+};
+
+
+const getSharedFile = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT file_url, file_type, file_name
+      FROM files
+      WHERE share_token = $1 AND is_shared = true
+      `,
+      [token]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Invalid or expired link' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch shared file' });
+  }
+};
+
+const setFilePassword = async (req, res) => {
+  try {
+    if (!req.user.is_paid) {
+      return res.status(403).json({ error: 'Premium feature' });
+    }
+
+    const { fileId } = req.params;
+    const { password } = req.body;
+    const userId = req.user.id;
+
+    if (!password) {
+      // remove password
+      await pool.query(
+        `UPDATE files
+         SET file_password_hash = NULL, is_locked = false
+         WHERE id = $1 AND user_id = $2`,
+        [fileId, userId]
+      );
+
+      return res.json({ message: 'Password removed' });
+    }
+
+    const hash = await bcrypt.hash(password, 10);
+
+    await pool.query(
+      `UPDATE files
+       SET file_password_hash = $1, is_locked = true
+       WHERE id = $2 AND user_id = $3`,
+      [hash, fileId, userId]
+    );
+
+    res.json({ message: 'Password set successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to set password' });
+  }
+};
+
+const verifyFilePassword = async (req, res) => {
+  const { fileId } = req.params;
+  const { password } = req.body;
+
+  const result = await pool.query(
+    `SELECT file_password_hash, file_url
+     FROM files WHERE id = $1`,
+    [fileId]
+  );
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const file = result.rows[0];
+
+  const isValid = await bcrypt.compare(
+    password,
+    file.file_password_hash
+  );
+
+  if (!isValid) {
+    return res.status(401).json({ error: 'Invalid password' });
+  }
+
+  res.json({ fileUrl: file.file_url });
+};
+
+const createFolder = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { folder_name } = req.body;
+
+    if (!folder_name || folder_name.trim() === '') {
+      return res.status(400).json({
+        error: 'Folder name is required'
+      });
+    }
+
+    const normalizedName = folder_name.trim().toLowerCase();
+
+    // check duplicate folder for this user
+    const existing = await pool.query(
+      `SELECT id FROM folders
+       WHERE user_id = $1 AND folder_name = $2`,
+      [userId, normalizedName]
+    );
+
+    if (existing.rowCount > 0) {
+      return res.status(409).json({
+        error: 'Folder already exists'
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO folders (user_id, folder_name)
+       VALUES ($1, $2)
+       RETURNING id, folder_name`,
+      [userId, normalizedName]
+    );
+
+    res.status(201).json({
+      folder: result.rows[0]
+    });
+  } catch (err) {
+    console.error('Create folder error:', err);
+    res.status(500).json({
+      error: 'Failed to create folder'
+    });
+  }
+};
+
+
 
 
 module.exports = {
@@ -334,5 +503,11 @@ module.exports = {
   getUserFiles,
   getUserFolders,
   updateFileFolder,
-  deleteFile
+  deleteFile,
+  shareFile,
+  getSharedFile,
+  setFilePassword,
+  verifyFilePassword,
+  createFolder,
+  
 };
