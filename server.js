@@ -75,6 +75,13 @@ app.use('/api/', (req, res, next) => {
   limiter(req, res, next);
 });
 
+// Health check (keep-alive)
+const healthCheck = (req, res) => {
+  res.status(200).send('OK');
+};
+
+app.get('/health', healthCheck);
+
 
 
 
@@ -89,9 +96,6 @@ app.use('/api/payment', require('./routes/payment'));
 
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 // Error handler
 app.use((err, req, res, next) => {
