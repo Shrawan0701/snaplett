@@ -80,8 +80,7 @@ const healthCheck = (req, res) => {
   res.status(200).send('OK');
 };
 
-app.get('/health', healthCheck);
-
+app.get('/api/health', healthCheck);
 
 
 
