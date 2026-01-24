@@ -27,17 +27,18 @@ router.options('/reset-password', (req, res) => {
 router.post(
   '/signup',
   [
-    body('email').isEmail().normalizeEmail(),
+    body('email').isEmail().trim().toLowerCase(),
     body('password').isLength({ min: 6 })
   ],
   signup
 );
 
+
 // Email/Password login
 router.post(
   '/login',
   [
-    body('email').isEmail().normalizeEmail(),
+    body('email').isEmail().trim().toLowerCase(),
     body('password').notEmpty()
   ],
   login

@@ -148,7 +148,8 @@ const getCurrentUser = async (req, res) => {
 
 // SEND OTP
 const forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  const email = req.body.email.trim().toLowerCase();
+
 
   // 1️⃣ Always respond same (avoid email enumeration)
   const userRes = await pool.query(
@@ -192,7 +193,9 @@ const forgotPassword = async (req, res) => {
 
 
 const resetPassword = async (req, res) => {
-  const { email, otp, newPassword } = req.body;
+  const email = req.body.email.trim().toLowerCase();
+  const { otp, newPassword } = req.body;
+
 
   const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
 
