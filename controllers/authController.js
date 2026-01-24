@@ -150,29 +150,46 @@ const getCurrentUser = async (req, res) => {
 const forgotPassword = async (req, res) => {
   const { email } = req.body;
 
+  // 1️⃣ Always respond same (avoid email enumeration)
   const userRes = await pool.query(
-    'SELECT id FROM users WHERE email=$1',
+    'SELECT id, reset_otp_expires FROM users WHERE email=$1',
     [email]
   );
 
   if (userRes.rowCount === 0) {
-    return res.json({ message: 'If email exists, OTP sent' });
+    return res.json({ otpSent: true });
   }
 
+  const user = userRes.rows[0];
+
+  // 2️⃣ Cooldown: block resend if OTP still valid
+  if (user.reset_otp_expires && new Date(user.reset_otp_expires) > new Date()) {
+    return res.status(429).json({
+      error: 'OTP already sent. Please wait before retrying.'
+    });
+  }
+
+  // 3️⃣ Generate fresh OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
   const expires = new Date(Date.now() + 10 * 60 * 1000);
 
+  // 4️⃣ Store OTP
   await pool.query(
     `UPDATE users
-     SET reset_otp_hash=$1, reset_otp_expires=$2
+     SET reset_otp_hash=$1,
+         reset_otp_expires=$2
      WHERE email=$3`,
     [otpHash, expires, email]
   );
 
+  // 5️⃣ Send email AFTER DB write
   await sendOTPEmail(email, otp);
-  res.json({ message: 'OTP sent' });
+
+  // 6️⃣ Explicit success
+  return res.json({ otpSent: true });
 };
+
 
 const resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
@@ -180,10 +197,11 @@ const resetPassword = async (req, res) => {
   const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
 
   const userRes = await pool.query(
-    `SELECT id FROM users
+    `SELECT id
+     FROM users
      WHERE email=$1
-     AND reset_otp_hash=$2
-     AND reset_otp_expires > NOW()`,
+       AND reset_otp_hash=$2
+       AND reset_otp_expires > NOW()`,
     [email, otpHash]
   );
 
@@ -191,18 +209,26 @@ const resetPassword = async (req, res) => {
     return res.status(400).json({ error: 'Invalid or expired OTP' });
   }
 
+  // 1️⃣ Invalidate OTP FIRST
+  await pool.query(
+    `UPDATE users
+     SET reset_otp_hash=NULL,
+         reset_otp_expires=NULL
+     WHERE email=$1`,
+    [email]
+  );
+
+  // 2️⃣ Update password
   const passwordHash = await bcrypt.hash(newPassword, 10);
 
   await pool.query(
     `UPDATE users
-     SET password_hash=$1,
-         reset_otp_hash=NULL,
-         reset_otp_expires=NULL
+     SET password_hash=$1
      WHERE email=$2`,
     [passwordHash, email]
   );
 
-  res.json({ message: 'Password reset successful' });
+  return res.json({ message: 'Password reset successful' });
 };
 
 
