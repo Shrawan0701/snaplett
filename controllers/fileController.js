@@ -1,5 +1,4 @@
 const pool = require('../config/database');
-const supabase = require('../config/supabase');
 const fs = require('fs');
 const path = require('path');
 const { detectFolder } = require('../services/folderDetector');
@@ -32,111 +31,76 @@ const uploadFile = async (req, res) => {
     const userId = req.user.id;
     const file = req.file;
     const fileType = file.mimetype;
-    const isPDF = fileType === 'application/pdf';
+
     const isImage = fileType.startsWith('image/');
-
-
-    console.log(`Processing file: ${file.originalname}, Type: ${fileType}`);
+    const isPDF = fileType === 'application/pdf';
+    const isDocx =
+      fileType ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
     let fileUrl = null;
     let cloudinaryPublicId = null;
 
-    /* ---------- STORE FILE ---------- */
-    if (isImage) {
-      const cloudinaryResult = await new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          {
-            folder: 'memvault/images',
-            resource_type: 'image'
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        );
+    // 🔹 UPLOAD TO CLOUDINARY (CORRECT WAY)
+    // ... inside uploadFile function
 
-        // multer diskStorage → read from path
-        fs.createReadStream(file.path).pipe(uploadStream);
-      });
+// 1. Define the resource type logic
+// PDFs must be 'auto' or 'image' to be viewable. Only use 'raw' for DOCX/other non-viewables.
+const resourceType = isImage || isPDF ? 'auto' : 'raw'; 
 
-      fileUrl = cloudinaryResult.secure_url;
-      cloudinaryPublicId = cloudinaryResult.public_id;
-   } else {
-  const fileBuffer = fs.readFileSync(file.path);
+const uploadResult = await new Promise((resolve, reject) => {
+  const uploadStream = cloudinary.uploader.upload_stream(
+    {
+      folder: isImage ? 'snaplet/images' : 'snaplet/docs',
+      resource_type: resourceType,
+      use_filename: true,
+      unique_filename: true
+      // 🟢 flags line removed completely
+    },
+    (error, result) => {
+      if (error) reject(error);
+      else resolve(result);
+    }
+  );
+  fs.createReadStream(file.path).pipe(uploadStream);
+});
 
-  const supabasePath = `${userId}/${Date.now()}-${file.originalname}`;
+fileUrl = uploadResult.secure_url;
 
-  const { error } = await supabase.storage
-    .from('files')
-    .upload(supabasePath, fileBuffer, {
-      contentType: file.mimetype,
-      upsert: false
-    });
+    cloudinaryPublicId = uploadResult.public_id;
 
-  if (error) throw error;
+    // 🧹 delete temp file AFTER upload
+    fs.unlinkSync(file.path);
 
-  const { data: publicUrl } = supabase.storage
-    .from('files')
-    .getPublicUrl(supabasePath);
-
-  fileUrl = publicUrl.publicUrl;
-}
-
-
-
-    console.log('File stored successfully');
-
-    /* ---------- Extract Text ---------- */
+    /* ---------- TEXT EXTRACTION ---------- */
     let extractedText = '';
 
     if (isImage) {
       extractedText = await extractTextFromImage(
         fs.readFileSync(file.path)
       );
-    } else if (fileType === 'application/pdf') {
+    } else if (isPDF) {
       extractedText = await extractTextFromPDF(
-        fs.readFileSync(file.path)
+        await fetch(fileUrl).then(r => r.arrayBuffer())
       );
-    } else {
+    } else if (isDocx) {
       extractedText = await extractTextFromDOCX(
-        fs.readFileSync(file.path)
+        await fetch(fileUrl).then(r => r.arrayBuffer())
       );
     }
 
     if (!extractedText || extractedText.length < 10) {
-      if (cloudinaryPublicId) {
-        await cloudinary.uploader.destroy(cloudinaryPublicId, {
-          resource_type: 'image'
-        });
-      }
-
-      return res.status(400).json({
-        error: 'No text could be extracted from the file'
-      });
+      return res.status(400).json({ error: 'No text extracted' });
     }
 
-    console.log(`Extracted text length: ${extractedText.length} characters`);
-
-    // cleanup temp file AFTER extraction
-if (fs.existsSync(file.path)) {
-  fs.unlinkSync(file.path);
-}
-
-
-    /* ---------- Embedding ---------- */
     const embedding = await generateEmbedding(extractedText);
-
-    /* ---------- Keywords ---------- */
     const keywords = extractKeywords(extractedText);
 
     let folder = 'general';
+    if (req.user.is_paid) {
+      folder = detectFolder(extractedText, file.originalname);
+    }
 
-if (req.user.is_paid) {
-  folder = detectFolder(extractedText, file.originalname);
-}
-
-
-    /* ---------- Save to Database ---------- */
     const result = await pool.query(
       `
       INSERT INTO files (
@@ -149,7 +113,7 @@ if (req.user.is_paid) {
         embedding,
         folder
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING id, file_url, file_type, file_name, created_at
       `,
       [
@@ -160,35 +124,22 @@ if (req.user.is_paid) {
         file.originalname,
         extractedText,
         embedding,
-        folder
+        folder,
       ]
     );
 
-    /* ---------- Update Free Upload Count ---------- */
-    if (!req.user.is_paid) {
-      await pool.query(
-        'UPDATE users SET free_uploads_used = free_uploads_used + 1 WHERE id = $1',
-        [userId]
-      );
-    }
-
-    console.log('File saved to database successfully');
-
     res.status(201).json({
       message: 'File uploaded successfully',
-      file: {
-        ...result.rows[0],
-        keywords
-      }
+      file: { ...result.rows[0], keywords },
     });
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({
-      error: 'Failed to upload file',
-      details: error.message
-    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };
+
+
+
 
 /* ============================
    GET USER FILES
@@ -244,39 +195,32 @@ const getUserFiles = async (req, res) => {
    DELETE FILE
 ============================ */
 const deleteFile = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const fileId = req.params.id;
+  const userId = req.user.id;
+  const fileId = req.params.id;
 
-    const fileResult = await pool.query(
-      `
-      SELECT file_url, cloudinary_public_id, file_type
-      FROM files
-      WHERE id = $1 AND user_id = $2
-      `,
-      [fileId, userId]
-    );
+  const result = await pool.query(
+    'SELECT cloudinary_public_id, file_type FROM files WHERE id=$1 AND user_id=$2',
+    [fileId, userId]
+  );
 
-    if (fileResult.rows.length === 0) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-
-    const file = fileResult.rows[0];
-
-    if (file.file_type.startsWith('image/') && file.cloudinary_public_id) {
-      await cloudinary.uploader.destroy(file.cloudinary_public_id, {
-        resource_type: 'image'
-      });
-    }
-
-    await pool.query('DELETE FROM files WHERE id = $1', [fileId]);
-
-    res.json({ message: 'File deleted successfully' });
-  } catch (error) {
-    console.error('Delete file error:', error);
-    res.status(500).json({ error: 'Failed to delete file' });
+  if (!result.rowCount) {
+    return res.status(404).json({ error: 'File not found' });
   }
+
+  const file = result.rows[0];
+
+ await cloudinary.uploader.destroy(file.cloudinary_public_id, {
+  resource_type: file.file_type.startsWith('image/')
+    ? 'image'
+    : 'raw',
+});
+
+
+  await pool.query('DELETE FROM files WHERE id=$1', [fileId]);
+
+  res.json({ message: 'File deleted successfully' });
 };
+
 const getUserFolders = async (req, res) => {
   try {
     const userId = req.user.id;
